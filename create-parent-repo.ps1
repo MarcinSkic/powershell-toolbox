@@ -1,10 +1,11 @@
 #----------------------SETUP-------------------------
 [Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8
 
-$semester = "third-semester"
+$semester = "fifth-semester"
 $beginningDate = Get-Date -Date "01/10/2021"
 $endDate = Get-Date -Date "01/01/2022"
 $failSafe = $True  #Protection against destructive repo history edition. Check this False if you are certain you now what you are doing
+$editParentDates = $False
 
 Write-Host "-----------------------SUBREPOSITORIES HISTORY REWRITING---------------------------"
 if(-not $failSafe){
@@ -69,14 +70,27 @@ git init
 New-Item README.md | Out-Null
 
 git add .
-$env:GIT_COMMITTER_DATE= "$beginningDate +0100"
-git commit -m "First commit" --date "$beginningDate +0100"
+if($editParentDates){
+    $env:GIT_COMMITTER_DATE= "$beginningDate +0100"
+    git commit -m "First commit" --date "$beginningDate +0100"
+} else {
+    git commit -m "First commit"
+}
 
-Get-Content ../README.md | Set-Content .\README.md 
+if(Test-Path -Path ../README.md){
+    Get-Content ../README.md | Set-Content .\README.md 
+} else {
+    Write-Warning "There is no README file to copy content"
+}
+
 
 git add .
-$env:GIT_COMMITTER_DATE= "$endDate +0100"
-git commit -m "Update README" --date "$endDate +0100"
+if($editParentDates){
+    $env:GIT_COMMITTER_DATE= "$endDate +0100"
+    git commit -m "Update README" --date "$endDate +0100"
+} else {
+    git commit -m "Update README"
+}
 
 $endDate = Get-Date $endDate -Day 30
 Get-ChildItem ../ -Directory |
@@ -89,12 +103,21 @@ ForEach-Object {
         return
     }
 
+    $confirmation = Read-Host "Do you wish to add $($_.Name) as subdirectory of $semester repository"
+        if ($confirmation -eq 'y') {
+            git filter-repo --force --message-callback "return b'[$($_.Name)] ' + message"
+        }
+
     git remote add -f $_.Name $_.FullName
     git merge -s ours --no-commit --allow-unrelated-histories "$($_.Name)/main"
     Read-Host "WAIT------------------------------------------------------------------------------"
     git read-tree --prefix="$($_.Name)/" -u "$($_.Name)/main"
-    $env:GIT_COMMITTER_DATE= "$endDate +0100"
-    git commit -m "Merge $($_.Name) into $semester" --date "$endDate +0100"
+    if($editParentDates){
+        $env:GIT_COMMITTER_DATE= "$endDate +0100"
+        git commit -m "Merge $($_.Name) into $semester" --date "$endDate +0100"
+    } else {
+        git commit -m "Merge $($_.Name) into $semester"
+    }    
 }
 
 git log --oneline --graph --all
