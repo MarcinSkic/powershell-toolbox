@@ -1,20 +1,21 @@
 #----------------------SETUP-------------------------
 [Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8
 
-$semester = "fifth-semester"
+$semester = "odin-foundations"
 $beginningDate = Get-Date -Date "01/10/2021"
 $endDate = Get-Date -Date "01/01/2022"
-$failSafe = $False  #Protection against destructive repo history edition. Check this False if you are certain you now what you are doing
+$protectChildrenHistory = $False  #Protection against destructive repo history edition. Check this False if you are certain you now what you are doing
+$protectChildrenDates = $True
 $editParentDates = $False
 
 Write-Host "-----------------------SUBREPOSITORIES HISTORY REWRITING---------------------------"
-if(-not $failSafe){
+if(-not $protectChildrenHistory){
     $confirmation = Read-Host "Do you want to change names or dates of imported repositories?"
 } else {
-    Write-Warning 'History rewriting is blocked by variable "$failSafe", change it if you wish to unlock this functionality'
+    Write-Warning 'History rewriting is blocked by variable "$protectChildrenHistory", change it if you wish to unlock this functionality'
 }
 
-if ($confirmation -eq 'y' -and -not $failSafe) {
+if ($confirmation -eq 'y' -and -not $protectChildrenHistory) {
     Get-ChildItem -Directory |
     ForEach-Object {
         git --git-dir=$($_.FullName)/.git --work-tree=$($_.FullName) status *>$null #Check if this folder is repository
@@ -40,14 +41,18 @@ if ($confirmation -eq 'y' -and -not $failSafe) {
         Write-Host "New date: $($endDate) +0100"
         Write-Host "In unix time: $epoch"
         
-        $confirmation = Read-Host "Do you want to apply this change?"
-        if ($confirmation -eq 'y') {
-            git filter-repo --force --commit-callback "
-            commit.committer_date = b'$($epoch) +0100'
-            commit.author_date = b'$($epoch) +0100'
-            "
-
-            $endDate = $endDate.AddDays(1)
+        if(-not $protectChildrenDates){
+            $confirmation = Read-Host "Do you want to apply this change?"
+            if ($confirmation -eq 'y') {
+                git filter-repo --force --commit-callback "
+                commit.committer_date = b'$($epoch) +0100'
+                commit.author_date = b'$($epoch) +0100'
+                "
+    
+                $endDate = $endDate.AddDays(1)
+            }
+        } else {
+            Write-Warning "Child repo date edition blocked by $protectChildrenDates variable, change it if you wish to access this functionality"
         }
 
         Write-Host "`n`n"
