@@ -4,7 +4,7 @@
 $semester = "fifth-semester"
 $beginningDate = Get-Date -Date "01/10/2021"
 $endDate = Get-Date -Date "01/01/2022"
-$failSafe = $True  #Protection against destructive repo history edition. Check this False if you are certain you now what you are doing
+$failSafe = $False  #Protection against destructive repo history edition. Check this False if you are certain you now what you are doing
 $editParentDates = $False
 
 Write-Host "-----------------------SUBREPOSITORIES HISTORY REWRITING---------------------------"
@@ -104,13 +104,12 @@ ForEach-Object {
     }
 
     $confirmation = Read-Host "Do you wish to add $($_.Name) as subdirectory of $semester repository"
-        if ($confirmation -eq 'y') {
-            git filter-repo --force --message-callback "return b'[$($_.Name)] ' + message"
-        }
+    if ($confirmation -ne 'y') {
+        return
+    }
 
     git remote add -f $_.Name $_.FullName
     git merge -s ours --no-commit --allow-unrelated-histories "$($_.Name)/main"
-    Read-Host "WAIT------------------------------------------------------------------------------"
     git read-tree --prefix="$($_.Name)/" -u "$($_.Name)/main"
     if($editParentDates){
         $env:GIT_COMMITTER_DATE= "$endDate +0100"
