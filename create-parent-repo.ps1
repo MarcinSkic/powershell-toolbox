@@ -1,21 +1,34 @@
-#----------------------SETUP-------------------------
+param(
+    [Parameter(Mandatory=$True)]
+    [String] $parentRepoName,
+    [switch] $massRename,
+    [switch] $addAllRepos,
+    [switch] $editChildDates,
+    [switch] $editParentDates
+)
+
+Write-Host "-----------------------SETUP---------------------------"
 [Console]::OutputEncoding = [Text.UTF8Encoding]::UTF8
+. "libraries.ps1"
 
-$semester = "odin-foundations"
-$beginningDate = Get-Date -Date "01/10/2021"
-$endDate = Get-Date -Date "01/01/2022"
-$protectChildrenHistory = $False  #Protection against destructive repo history edition. Check this False if you are certain you now what you are doing
-$protectChildrenDates = $True
-$editParentDates = $False
+if($editChildDates -or $editParentDates){
+    $beginningDate = GetDateUsingCalendar "Start date"
+    $endDate = GetDateUsingCalendar "End date"
 
-Write-Host "-----------------------SUBREPOSITORIES HISTORY REWRITING---------------------------"
-if(-not $protectChildrenHistory){
-    $confirmation = Read-Host "Do you want to change names or dates of imported repositories?"
-} else {
-    Write-Warning 'History rewriting is blocked by variable "$protectChildrenHistory", change it if you wish to unlock this functionality'
+    if(-not $beginningDate -or -not $endDate){
+        Write-Error "Dates wheren't selected but flags for date edition where set"
+        exit
+    }
 }
+$protectChildrenDates = -not $editChildDates #Protection against destructive repo history edition.
 
-if ($confirmation -eq 'y' -and -not $protectChildrenHistory) {
+if(Test-Path -Path $parentRepoName){
+    Remove-Item $parentRepoName -Recurse -Force
+}
+Write-Host "-----------------------SUBREPOSITORIES HISTORY REWRITING---------------------------"
+
+$confirmation = Read-Host "Do you want to change names or dates of imported repositories?"
+if ($confirmation -eq 'y') {
     Get-ChildItem -Directory |
     ForEach-Object {
         git --git-dir=$($_.FullName)/.git --work-tree=$($_.FullName) status *>$null #Check if this folder is repository
@@ -28,20 +41,32 @@ if ($confirmation -eq 'y' -and -not $protectChildrenHistory) {
         Set-Location $_.FullName
 
         git filter-repo --dry-run --force --message-callback "
-        print(b'[$($_.Name)] ' + message)
-        return b'[$($_.Name)] ' + message"
+        if(not b'[$($_.Name)]' in message):
+            print(b'[$($_.Name)] ' + message)
+            return b'[$($_.Name)] ' + message
+        else:
+            print(b'|NO CHANGE| ' + message)
+            return message
+        "
 
-        $confirmation = Read-Host "Do you want to apply this change?"
-        if ($confirmation -eq 'y') {
-            git filter-repo --force --message-callback "return b'[$($_.Name)] ' + message"
+        if(-not $massRename){
+            $confirmation = Read-Host "Do you want to apply this change to [$($_.Name)] repo?"
         }
-
-        $epoch = [Math]::Floor($(Get-Date $endDate -UFormat %s))
-
-        Write-Host "New date: $($endDate) +0100"
-        Write-Host "In unix time: $epoch"
+        if ($confirmation -eq 'y' -or $massRename) {
+            git filter-repo --force --message-callback "
+            if(not b'[$($_.Name)]' in message):
+                return b'[$($_.Name)] ' + message
+            else:
+                return message
+            "
+        }
         
         if(-not $protectChildrenDates){
+            $epoch = [Math]::Floor($(Get-Date $endDate -UFormat %s))
+
+            Write-Host "New date: $($endDate) +0100"
+            Write-Host "In unix time: $epoch"
+
             $confirmation = Read-Host "Do you want to apply this change?"
             if ($confirmation -eq 'y') {
                 git filter-repo --force --commit-callback "
@@ -52,7 +77,7 @@ if ($confirmation -eq 'y' -and -not $protectChildrenHistory) {
                 $endDate = $endDate.AddDays(1)
             }
         } else {
-            Write-Warning "Child repo date edition blocked by $protectChildrenDates variable, change it if you wish to access this functionality"
+            Write-Warning 'Child repo date edition blocked. Unlock by setting editChildDates flag'
         }
 
         Write-Host "`n`n"
@@ -61,15 +86,11 @@ if ($confirmation -eq 'y' -and -not $protectChildrenHistory) {
 }
 
 Write-Host "--------------------------CREATION OF PARENT REPOSITORY------------------------------"
-if(Test-Path -Path $semester){
-    Remove-Item $semester -Recurse -Force
-}
-
-New-Item $semester -ItemType Directory | Out-Null
+New-Item $parentRepoName -ItemType Directory | Out-Null
 
 Push-Location
 
-Set-Location $semester
+Set-Location $parentRepoName
 git init
 
 New-Item README.md | Out-Null
@@ -97,10 +118,13 @@ if($editParentDates){
     git commit -m "Update README"
 }
 
-$endDate = Get-Date $endDate -Day 30
+if($editParentDates){
+    $endDate = Get-Date $endDate -Day 30
+}
+
 Get-ChildItem ../ -Directory |
 ForEach-Object {
-    if($semester -eq $_.Name) {return} #Skip repo of semester that is worked on
+    if($parentRepoName -eq $_.Name) {return} #Skip repo of parentRepoName that is worked on
 
     git --git-dir=$($_.FullName)/.git --work-tree=$($_.FullName) status *>$null #Check if this folder is repository
     if(-Not $?){
@@ -108,9 +132,11 @@ ForEach-Object {
         return
     }
 
-    $confirmation = Read-Host "Do you wish to add $($_.Name) as subdirectory of $semester repository"
-    if ($confirmation -ne 'y') {
-        return
+    if(-not $addAllRepos){
+        $confirmation = Read-Host "Do you wish to add $($_.Name) as subdirectory of $parentRepoName repository"
+        if ($confirmation -ne 'y') {
+            return
+        }
     }
 
     git remote add -f $_.Name $_.FullName
@@ -118,9 +144,9 @@ ForEach-Object {
     git read-tree --prefix="$($_.Name)/" -u "$($_.Name)/main"
     if($editParentDates){
         $env:GIT_COMMITTER_DATE= "$endDate +0100"
-        git commit -m "Merge $($_.Name) into $semester" --date "$endDate +0100"
+        git commit -m "Merge $($_.Name) into $parentRepoName" --date "$endDate +0100"
     } else {
-        git commit -m "Merge $($_.Name) into $semester"
+        git commit -m "Merge $($_.Name) into $parentRepoName"
     }    
 }
 
