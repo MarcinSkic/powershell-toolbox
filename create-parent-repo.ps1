@@ -19,6 +19,11 @@ if($editChildDates -or $editParentDates){
         Write-Error "Dates wheren't selected but flags for date edition where set"
         exit
     }
+
+    if($beginningDate -gt $endDate){
+        Write-Error "Start date is after end date!"
+        exit
+    }
 }
 $protectChildrenDates = -not $editChildDates #Protection against destructive repo history edition.
 
