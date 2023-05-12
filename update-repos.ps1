@@ -12,7 +12,10 @@ ForEach-Object {
 
     if($?){
         "`nProcessing $($_.FullName)"
-        git switch main *>$null
+        if(-not ($gitOperation -eq "status")){
+            git switch main *>$null
+        }
+        
         git $gitOperation
     }
 
